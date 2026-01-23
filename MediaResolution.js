@@ -1,95 +1,98 @@
 (function() {
+    // 1. CONFIRMATION ALERT (You can remove this once it works)
+    console.log("!!! GEMINI EXTENSION LOADING !!!");
+    alert("Gemini Media Extension Loaded! Check console (F12) for logs.");
+
     const STORAGE_KEY = 'tm_gemini_media_res';
     let currentRes = localStorage.getItem(STORAGE_KEY) || 'MEDIA_RESOLUTION_HIGH';
 
-    console.log("%c[GeminiRes] v4 Monitoring Active...", "color: #00ffcc; font-weight: bold;");
+    // Helper to log with style so it's easy to find in the console
+    const log = (msg, color = "#00ffcc") => console.log(`%c[GeminiRes] ${msg}`, `color: ${color}; font-weight: bold;`);
 
-    // --- 1. THE INTERCEPTOR (SAFER) ---
+    // --- 1. THE UNIVERSAL HOOK ---
+    // Instead of Fetch/XHR, we hook the JSON creator itself.
+    // This is the most reliable way to catch data before it's sent.
     const originalStringify = JSON.stringify;
     JSON.stringify = function(value, replacer, space) {
         try {
-            // Check for TypingMind's AI request structure: 'contents' + 'generationConfig'
-            if (value && typeof value === 'object' && value.contents && (value.generationConfig || value.generation_config)) {
+            // TypingMind AI requests always have 'contents' and 'generationConfig'
+            if (value && typeof value === 'object' && value.contents) {
                 
-                // Only process if it's likely a Gemini/Google request
-                const isGemini = (value.model && value.model.includes('gemini')) || 
-                                 (value.generationConfig && value.generationConfig.thinkingConfig);
+                log("Intercepted a potential AI request...", "#ffcc00");
 
-                if (isGemini) {
-                    console.log("%c[GeminiRes] Detected AI Request. Injecting: " + currentRes, "color: #00ff00;");
+                // Target the generationConfig object
+                // We use both casing styles found in TypingMind
+                let config = value.generationConfig || value.generation_config;
+                
+                if (!config && value.model) {
+                    // If config doesn't exist but it's a model call, create it
+                    value.generationConfig = {};
+                    config = value.generationConfig;
+                }
 
-                    const config = value.generationConfig || value.generation_config;
-
-                    // Inject both styles (TypingMind internal + Google API standard)
+                if (config) {
+                    log(`Injecting Resolution: ${currentRes}`, "#00ff00");
+                    
                     config.media_resolution = currentRes;
                     config.mediaResolution = currentRes;
 
-                    // Support for ULTRA HIGH (Per-part resolution)
+                    // Ultra High Support (Per-part)
                     if (currentRes === 'MEDIA_RESOLUTION_ULTRA_HIGH') {
-                        value.contents.forEach(content => {
-                            if (content.parts) {
-                                content.parts.forEach(part => {
-                                    if (part.inline_data || part.file_data) {
-                                        part.media_resolution = { level: currentRes };
-                                        part.mediaResolution = { level: currentRes };
-                                    }
-                                });
-                            }
+                        value.contents.forEach(c => {
+                            c.parts?.forEach(p => {
+                                if (p.inline_data || p.file_data) {
+                                    p.media_resolution = { level: currentRes };
+                                    p.mediaResolution = { level: currentRes };
+                                }
+                            });
                         });
                     }
-                    console.log("%c[GeminiRes] INJECTION SUCCESS", "color: #00ff00; font-weight: bold;");
+                    log("SUCCESS: Resolution injected into payload.", "#00ff00");
                 }
             }
-        } catch (e) {
-            // Silently fail so we don't break the actual Fetch/Sync
+        } catch (err) {
+            // Ensure we never break the original stringify
         }
         return originalStringify(value, replacer, space);
     };
 
-    // --- 2. UI LOGIC (ISOLATED TO PREVENT ERRORS) ---
+    // --- 2. UI INJECTION ---
     function injectUI() {
-        try {
-            const actionBar = document.querySelector('[data-element-id="chat-input-actions"]');
-            if (!actionBar || document.getElementById('tm-gemini-res-container')) return;
+        const actionBar = document.querySelector('[data-element-id="chat-input-actions"]');
+        if (!actionBar || document.getElementById('tm-gemini-res-container')) return;
 
-            const container = document.createElement('div');
-            container.id = 'tm-gemini-res-container';
-            container.style.cssText = 'display:flex; align-items:center; margin-right:8px; font-size:11px; border:1px solid rgba(128,128,128,0.2); border-radius:4px; padding:2px 6px; background:rgba(128,128,128,0.05);';
-            
-            const select = document.createElement('select');
-            select.style.cssText = 'background:transparent; border:none; outline:none; font-size:11px; cursor:pointer; color:inherit;';
-            
-            const options = [
-                { l: 'Low', v: 'MEDIA_RESOLUTION_LOW' },
-                { l: 'Med', v: 'MEDIA_RESOLUTION_MEDIUM' },
-                { l: 'High', v: 'MEDIA_RESOLUTION_HIGH' },
-                { l: 'Ultra', v: 'MEDIA_RESOLUTION_ULTRA_HIGH' }
-            ];
+        log("Injecting UI Selector...");
+        const container = document.createElement('div');
+        container.id = 'tm-gemini-res-container';
+        container.style.cssText = 'display:flex; align-items:center; margin-right:8px; font-size:11px; border:1px solid #444; border-radius:4px; padding:2px 6px; background:rgba(255,255,255,0.05);';
+        
+        const select = document.createElement('select');
+        select.style.cssText = 'background:transparent; border:none; outline:none; font-size:11px; cursor:pointer; color:inherit;';
+        
+        [
+            {l:'Low', v:'MEDIA_RESOLUTION_LOW'},
+            {l:'Med', v:'MEDIA_RESOLUTION_MEDIUM'},
+            {l:'High', v:'MEDIA_RESOLUTION_HIGH'},
+            {l:'Ultra', v:'MEDIA_RESOLUTION_ULTRA_HIGH'}
+        ].forEach(optData => {
+            const opt = document.createElement('option');
+            opt.value = optData.v; opt.innerText = optData.l;
+            opt.style.background = "#222"; // Dark theme fix
+            if (optData.v === currentRes) opt.selected = true;
+            select.appendChild(opt);
+        });
 
-            options.forEach(optData => {
-                const opt = document.createElement('option');
-                opt.value = optData.v;
-                opt.innerText = optData.l;
-                if (optData.v === currentRes) opt.selected = true;
-                select.appendChild(opt);
-            });
+        select.onchange = (e) => {
+            currentRes = e.target.value;
+            localStorage.setItem(STORAGE_KEY, currentRes);
+            log("User changed setting to: " + currentRes);
+        };
 
-            select.onchange = (e) => {
-                currentRes = e.target.value;
-                localStorage.setItem(STORAGE_KEY, currentRes);
-                console.log("[GeminiRes] User changed res to: " + currentRes);
-            };
-
-            container.innerHTML = `<span style="margin-right:4px; opacity:0.7;">Res:</span>`;
-            container.appendChild(select);
-            actionBar.prepend(container);
-        } catch (err) {
-            console.error("[GeminiRes] UI Error", err);
-        }
+        container.innerHTML = `<span style="margin-right:4px; opacity:0.6;">Res:</span>`;
+        container.appendChild(select);
+        actionBar.prepend(container);
     }
 
-    // Use a safer interval to ensure the UI is injected without blocking
-    setTimeout(() => {
-        setInterval(injectUI, 2000);
-    }, 1000);
+    // Start UI check
+    setInterval(injectUI, 2000);
 })();
