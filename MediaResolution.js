@@ -1,98 +1,71 @@
-(function() {
-    // 1. CONFIRMATION ALERT (You can remove this once it works)
-    console.log("!!! GEMINI EXTENSION LOADING !!!");
-    alert("Gemini Media Extension Loaded! Check console (F12) for logs.");
+(function () {
+  const TAG = "[TM Gemini Diagnostic]";
+  const seen = { fetch: 0, xhr: 0, worker: 0 };
 
-    const STORAGE_KEY = 'tm_gemini_media_res';
-    let currentRes = localStorage.getItem(STORAGE_KEY) || 'MEDIA_RESOLUTION_HIGH';
+  // Visible indicator so we don't depend on console
+  const badge = document.createElement("div");
+  badge.id = "tm-gemini-diag-badge";
+  badge.style.cssText = `
+    position: fixed; z-index: 999999;
+    bottom: 12px; right: 12px;
+    font: 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    background: rgba(0,0,0,0.75);
+    color: #fff; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.15);
+    max-width: 60vw;
+  `;
+  function renderBadge(extra = "") {
+    badge.textContent =
+      `${TAG} v1` +
+      ` | fetch:${seen.fetch} xhr:${seen.xhr} worker:${seen.worker}` +
+      (extra ? ` | ${extra}` : "");
+  }
+  renderBadge("loaded");
+  document.documentElement.appendChild(badge);
 
-    // Helper to log with style so it's easy to find in the console
-    const log = (msg, color = "#00ffcc") => console.log(`%c[GeminiRes] ${msg}`, `color: ${color}; font-weight: bold;`);
+  // 1) Log Worker creation (very important)
+  const OriginalWorker = window.Worker;
+  window.Worker = function (scriptURL, options) {
+    seen.worker++;
+    renderBadge(`Worker(${options?.type || "classic"})`);
+    console.log(TAG, "Worker created:", scriptURL, options);
+    return new OriginalWorker(scriptURL, options);
+  };
 
-    // --- 1. THE UNIVERSAL HOOK ---
-    // Instead of Fetch/XHR, we hook the JSON creator itself.
-    // This is the most reliable way to catch data before it's sent.
-    const originalStringify = JSON.stringify;
-    JSON.stringify = function(value, replacer, space) {
-        try {
-            // TypingMind AI requests always have 'contents' and 'generationConfig'
-            if (value && typeof value === 'object' && value.contents) {
-                
-                log("Intercepted a potential AI request...", "#ffcc00");
-
-                // Target the generationConfig object
-                // We use both casing styles found in TypingMind
-                let config = value.generationConfig || value.generation_config;
-                
-                if (!config && value.model) {
-                    // If config doesn't exist but it's a model call, create it
-                    value.generationConfig = {};
-                    config = value.generationConfig;
-                }
-
-                if (config) {
-                    log(`Injecting Resolution: ${currentRes}`, "#00ff00");
-                    
-                    config.media_resolution = currentRes;
-                    config.mediaResolution = currentRes;
-
-                    // Ultra High Support (Per-part)
-                    if (currentRes === 'MEDIA_RESOLUTION_ULTRA_HIGH') {
-                        value.contents.forEach(c => {
-                            c.parts?.forEach(p => {
-                                if (p.inline_data || p.file_data) {
-                                    p.media_resolution = { level: currentRes };
-                                    p.mediaResolution = { level: currentRes };
-                                }
-                            });
-                        });
-                    }
-                    log("SUCCESS: Resolution injected into payload.", "#00ff00");
-                }
-            }
-        } catch (err) {
-            // Ensure we never break the original stringify
-        }
-        return originalStringify(value, replacer, space);
-    };
-
-    // --- 2. UI INJECTION ---
-    function injectUI() {
-        const actionBar = document.querySelector('[data-element-id="chat-input-actions"]');
-        if (!actionBar || document.getElementById('tm-gemini-res-container')) return;
-
-        log("Injecting UI Selector...");
-        const container = document.createElement('div');
-        container.id = 'tm-gemini-res-container';
-        container.style.cssText = 'display:flex; align-items:center; margin-right:8px; font-size:11px; border:1px solid #444; border-radius:4px; padding:2px 6px; background:rgba(255,255,255,0.05);';
-        
-        const select = document.createElement('select');
-        select.style.cssText = 'background:transparent; border:none; outline:none; font-size:11px; cursor:pointer; color:inherit;';
-        
-        [
-            {l:'Low', v:'MEDIA_RESOLUTION_LOW'},
-            {l:'Med', v:'MEDIA_RESOLUTION_MEDIUM'},
-            {l:'High', v:'MEDIA_RESOLUTION_HIGH'},
-            {l:'Ultra', v:'MEDIA_RESOLUTION_ULTRA_HIGH'}
-        ].forEach(optData => {
-            const opt = document.createElement('option');
-            opt.value = optData.v; opt.innerText = optData.l;
-            opt.style.background = "#222"; // Dark theme fix
-            if (optData.v === currentRes) opt.selected = true;
-            select.appendChild(opt);
-        });
-
-        select.onchange = (e) => {
-            currentRes = e.target.value;
-            localStorage.setItem(STORAGE_KEY, currentRes);
-            log("User changed setting to: " + currentRes);
-        };
-
-        container.innerHTML = `<span style="margin-right:4px; opacity:0.6;">Res:</span>`;
-        container.appendChild(select);
-        actionBar.prepend(container);
+  // 2) Log fetch calls to Gemini endpoint
+  const originalFetch = window.fetch;
+  window.fetch = function (input, init) {
+    const url = typeof input === "string" ? input : (input?.url || "");
+    if (url.includes("generativelanguage.googleapis.com")) {
+      seen.fetch++;
+      renderBadge("fetch→Gemini");
+      console.log(TAG, "fetch→Gemini", { url, method: init?.method, hasBody: !!init?.body });
     }
+    return originalFetch.apply(this, arguments);
+  };
 
-    // Start UI check
-    setInterval(injectUI, 2000);
+  // 3) Log XHR calls to Gemini endpoint
+  const origOpen = XMLHttpRequest.prototype.open;
+  const origSend = XMLHttpRequest.prototype.send;
+
+  XMLHttpRequest.prototype.open = function (method, url) {
+    this.__tm_diag = { method, url };
+    return origOpen.apply(this, arguments);
+  };
+
+  XMLHttpRequest.prototype.send = function (body) {
+    const url = this.__tm_diag?.url || "";
+    if (typeof url === "string" && url.includes("generativelanguage.googleapis.com")) {
+      seen.xhr++;
+      renderBadge("xhr→Gemini");
+      console.log(TAG, "xhr→Gemini", {
+        url,
+        method: this.__tm_diag?.method,
+        bodyType: typeof body,
+      });
+    }
+    return origSend.apply(this, arguments);
+  };
+
+  console.log(TAG, "Diagnostic extension running. If you don't see this, your updated code isn't being reloaded.");
 })();
