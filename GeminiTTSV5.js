@@ -1,0 +1,108 @@
+(function () {
+    const STORAGE_KEY = 'tm_extension_google_tts_key';
+    const VOICE_NAME = 'en-US-Studio-O'; 
+    
+    // Create Clickable Status Bar
+    const debugTag = document.createElement('div');
+    debugTag.id = 'gemini-tts-status';
+    debugTag.innerHTML = 'Gemini TTS: Tap to Set API Key';
+    debugTag.style.cssText = 'position:fixed; top:0; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); color:white; font-size:11px; padding:4px 12px; z-index:9999; border-radius:0 0 10px 10px; font-family:sans-serif; cursor:pointer; font-weight:bold;';
+    document.body.appendChild(debugTag);
+
+    debugTag.onclick = () => {
+        const key = prompt("Enter Google Cloud API Key:", localStorage.getItem(STORAGE_KEY) || "");
+        if (key) {
+            localStorage.setItem(STORAGE_KEY, key);
+            updateStatus('Key Saved! Ready.', '#2ecc71');
+        }
+    };
+
+    function updateStatus(text, color = 'rgba(0,0,0,0.7)') {
+        debugTag.innerHTML = 'Gemini TTS: ' + text;
+        debugTag.style.background = color;
+    }
+
+    async function synthesizeSpeech(text) {
+        const apiKey = localStorage.getItem(STORAGE_KEY);
+        if (!apiKey) {
+            alert("Please tap the 'Gemini TTS' bar at the top to set your API Key first!");
+            return;
+        }
+
+        updateStatus('Generating...', '#f39c12');
+        try {
+            const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    input: { text: text },
+                    voice: { languageCode: "en-US", name: VOICE_NAME },
+                    audioConfig: { audioEncoding: "MP3" }
+                })
+            });
+            const data = await response.json();
+            if (data.audioContent) {
+                updateStatus('Playing...', '#2ecc71');
+                const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
+                audio.onended = () => updateStatus('Ready');
+                audio.play();
+            } else {
+                updateStatus('Error', '#e74c3c');
+                alert("API Error: " + (data.error ? data.error.message : "Check your key/quota."));
+            }
+        } catch (e) {
+            updateStatus('Network Error', '#e74c3c');
+        }
+    }
+
+    // NEW SMART SEARCH: Find the message text nearest to this button
+    function getMessageText(btn) {
+        // 1. Try to find the common TM message containers
+        let container = btn.closest('[data-element-id="chat-message"]') || 
+                        btn.closest('.message-row') || 
+                        btn.parentElement.parentElement;
+        
+        // 2. Look for the AI message div specifically
+        let textNode = container.querySelector('[data-element-id="ai-message"]') || 
+                       container.querySelector('.prose') ||
+                       container.querySelector('.message-content');
+
+        // 3. FALLBACK: If we still can't find it, just grab the text of the 
+        // entire container but strip out the action bar buttons.
+        let target = textNode || container;
+        let cleanText = target.innerText
+            .replace(/Copy|Edit|Play|Regenerate|Pin|Delete|Fork|Show raw/g, '') // Strip common button text
+            .replace(/\d{1,2}:\d{2}/g, '') // Strip timestamps
+            .trim();
+
+        return cleanText;
+    }
+
+    function inject() {
+        // TypingMind uses different IDs for the copy button on mobile/desktop
+        const copyBtns = document.querySelectorAll('[data-element-id="copy-message-button"], .btn-copy-message');
+        
+        copyBtns.forEach(copyBtn => {
+            if (copyBtn.parentElement.querySelector('.gemini-tts-btn')) return;
+            
+            const btn = document.createElement('button');
+            btn.className = 'gemini-tts-btn p-1 ml-1';
+            // Simple speaker icon
+            btn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" stroke="white" stroke-width="2" fill="none"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon></svg>`;
+            
+            btn.onclick = (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const text = getMessageText(btn);
+                if (text && text.length > 3) {
+                    synthesizeSpeech(text);
+                } else {
+                    updateStatus('Text not found', '#e74c3c');
+                    alert("Could not extract message text. Try tapping the message first.");
+                }
+            };
+            copyBtn.after(btn);
+        });
+    }
+
+    setInterval(inject, 1000);
+})();
