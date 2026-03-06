@@ -1,7 +1,7 @@
 {
   "id": "perplexity_search_worker_complete",
   "uuid": "f96b062f-5026-46d4-9932-c5c3a56808ed",
-  "emoji": "🌐",
+  "emoji": "\ud83c\udf10",
   "title": "Perplexity Search",
   "syncedAt": "2026-01-29T01:32:57.000Z",
   "createdAt": "2026-01-29T01:03:55.473Z",
@@ -21,30 +21,17 @@
       "required": true
     },
     {
-      "name": "Max_Results",
-      "label": "Max Results",
-      "required": true,
-      "defaultValue": "10"
-    },
-    {
       "name": "max_tokens",
       "label": "Max Tokens",
       "required": true,
       "description": "Total token budget for the search operation.",
       "defaultValue": "25000"
-    },
-    {
-      "name": "max_tokens_per_page",
-      "label": "Max Tokens Per Page",
-      "required": true,
-      "description": "Max tokens per individual webpage.",
-      "defaultValue": "2048"
     }
   ],
   "pluginFunctions": [
     {
       "id": "813db24f-65c0-44d6-b9fc-f2212eb743f4",
-      "code": "async function perplexity_search({ query }, userSettings) {\n  const response = await fetch(userSettings.worker_url, {\n    method: 'POST',\n    headers: {\n      'Authorization': 'Bearer ' + userSettings.perplexity_api_key,\n      'Content-Type': 'application/json'\n    },\n    body: JSON.stringify({\n      query: query,\n      maxResults: parseInt(userSettings.Max_Results) || 10,\n      max_tokens: parseInt(userSettings.max_tokens) || 25000,\n      maxTokensPerPage: parseInt(userSettings.max_tokens_per_page) || 2048\n    })\n  });\n  \n  if (!response.ok) {\n    const err = await response.text();\n    throw new Error(`Worker Error: ${response.status} - ${err}`);\n  }\n  \n  return await response.json();\n}",
+      "code": "async function perplexity_search(params, userSettings) {\n  const max_results_val = parseInt(params.max_results) || 10;\n  const max_tokens_val = parseInt(userSettings.max_tokens) || 25000;\n  const max_tokens_per_page_val = Math.floor(max_tokens_val / Math.max(1, max_results_val));\n\n  const payload = {\n    query: params.query,\n    max_results: max_results_val,\n    max_tokens: max_tokens_val,\n    max_tokens_per_page: max_tokens_per_page_val\n  };\n\n  const optionalParams = [\n    'country', 'search_language_filter', 'search_domain_filter', \n    'last_updated_after_filter', 'last_updated_before_filter', \n    'search_after_date_filter', 'search_before_date_filter', \n    'search_recency_filter'\n  ];\n\n  for (const p of optionalParams) {\n    if (params[p] !== undefined) {\n      payload[p] = params[p];\n    }\n  }\n\n  const response = await fetch(userSettings.worker_url, {\n    method: 'POST',\n    headers: {\n      'Authorization': 'Bearer ' + userSettings.perplexity_api_key,\n      'Content-Type': 'application/json'\n    },\n    body: JSON.stringify(payload)\n  });\n  \n  if (!response.ok) {\n    const err = await response.text();\n    throw new Error(`Worker Error: ${response.status} - ${err}`);\n  }\n  \n  return await response.json();\n}",
       "name": "perplexity_search",
       "openaiSpec": {
         "name": "perplexity_search",
@@ -57,6 +44,55 @@
             "query": {
               "type": "string",
               "description": "The search query."
+            },
+            "max_results": {
+              "type": "integer",
+              "description": "Maximum number of results to return. Default 10. Range: 1-20"
+            },
+            "country": {
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 country code"
+            },
+            "search_language_filter": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "ISO 639-1 language codes (2-character max)"
+            },
+            "search_domain_filter": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Limit search results to specific domains (max 20)"
+            },
+            "last_updated_after_filter": {
+              "type": "string",
+              "description": "Return results updated after this date (MM/DD/YYYY)"
+            },
+            "last_updated_before_filter": {
+              "type": "string",
+              "description": "Return results updated before this date (MM/DD/YYYY)"
+            },
+            "search_after_date_filter": {
+              "type": "string",
+              "description": "Return results published after this date (MM/DD/YYYY)"
+            },
+            "search_before_date_filter": {
+              "type": "string",
+              "description": "Return results published before this date (MM/DD/YYYY)"
+            },
+            "search_recency_filter": {
+              "type": "string",
+              "enum": [
+                "hour",
+                "day",
+                "week",
+                "month",
+                "year"
+              ],
+              "description": "Filter by publication recency (hour/day/week/month/year)"
             }
           }
         },
