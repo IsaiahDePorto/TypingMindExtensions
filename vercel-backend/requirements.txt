@@ -1,0 +1,6 @@
+e2b_code_interpreter
+google-genai
+requests
+fastapi
+pydantic
+uvicorn
