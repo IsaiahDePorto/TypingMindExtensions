@@ -2,12 +2,14 @@
   "id": "exa_eldg_hybrid_layered",
   "uuid": "8e2535e9-93f5-4062-8658-a8817557a883",
   "emoji": "🧭",
-  "title": "Exa-ELDG Hybrid Retrieval Engine v7.5 (Self-Healing & Credibility-Layered)",
+  "title": "Exa-ELDG Hybrid Retrieval Engine v7.5 ",
   "iconURL": "",
   "overview": "A breadth-aware, artifact-capable agentic retrieval engine for TypingMind. Preserves ELDG's checks-and-balances for facts and contradiction audits while adding exact-text, raw-code, exhaustive-list, and procedure extraction lanes so the parent model can get sufficient material in one call.",
-  "syncedAt": "2026-07-22T17:08:59.000Z",
+  "syncedAt": "2026-09-08T21:19:42.000Z",
   "createdAt": "2026-06-09T18:00:00.000Z",
   "deletedAt": null,
+  "oauthConfig": null,
+  "permissions": [],
   "userSettings": [
     {
       "name": "proxyUrl",
@@ -84,5 +86,7 @@
     }
   ],
   "overviewMarkdown": "### Exa-ELDG Hybrid Retrieval Engine v7.5 🧭 (Self-Healing & Credibility-Layered)\n\nThis is an optimized, breadth-aware, artifact-capable retrieval engine for TypingMind. It maps queries into specialized retrieval lanes to bypass mainstream search limits.\n\n#### Gaps Closed in v7.5:\n1. **Adversarial Preprint Isolation:** \n   - Dynamically demotes and isolates unreviewed preprints (such as those hosted on `Preprints.org` or containing `preprint` patterns) to *Level 2 (Tertiary Source)*. \n   - Prevents clinical term \"laundering\" through un-reviewed repositories.\n2. **Disclaimer/Acknowledge SIFT Safeguard:** \n   - Modifies the window selection algorithm to scan for acknowledgments, disclaimers, or conflict of interest declarations (including terms like \"made up\", \"fictional\", \"disclaimer\", \"disclosure\").\n   - Massive score boost (+1000) guarantees these sections are prioritized and delivered directly to the SIFT Auditor (Gemini 3.5 Flash-Lite) rather than truncated, preventing jokes or hoaxes from hiding at the bottom of long documents.\n3. **Google Interactions API Integration:**\n   - All internal Gemini calls (Need Router, SIFT Auditor, and Unified Context Sieve) use Google's latest `v1beta/interactions` REST API endpoint.\n4. **Circular Citation and Echo-Chamber Graphing:**\n   - Detects when multiple secondary summaries cite a single preprint or when academic citations form a closed circular reinforcement chain, flagging them directly in the control layer.\n",
-  "authenticationType": "AUTH_TYPE_NONE"
+  "authenticationType": "AUTH_TYPE_NONE",
+  "dynamicContextEndpoints": [],
+  "sharedOAuthConnectionID": null
 }
